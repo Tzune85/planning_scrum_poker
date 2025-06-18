@@ -20,12 +20,12 @@ import { Clipboard, CheckCircle, Users, LogIn, LogOut, PlusCircle, Eye, EyeOff, 
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDKtaQACRf2_zMN3AyBdS_JsbEqR0u5TFY",
-  authDomain: "planning-scrum-poker-cbe5c.firebaseapp.com",
-  projectId: "planning-scrum-poker-cbe5c",
-  storageBucket: "planning-scrum-poker-cbe5c.firebasestorage.app",
-  messagingSenderId: "769821686060",
-  appId: "1:769821686060:web:dbc33abce6966c1c589489"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 const effectiveFirebaseConfig = firebaseConfig;

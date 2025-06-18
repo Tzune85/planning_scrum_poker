@@ -47,13 +47,29 @@ npm install
 
 ## 🔧 Configuration
 
-The project is already configured with Firebase. The configuration is present in the `src/App.jsx` file and includes:
+### Firebase Setup
 
-- Anonymous authentication
-- Firestore Database for sessions
-- Firebase Hosting (optional)
+This project uses Firebase for authentication and database. You need to set up your own Firebase project and configure the environment variables.
 
-> **Note**: The project uses an already configured Firebase project. If you want to use your own Firebase project, modify the configuration in `src/App.jsx`.
+1. **Create a Firebase project** at [Firebase Console](https://console.firebase.google.com/)
+2. **Enable Authentication** (Anonymous sign-in method)
+3. **Create a Firestore Database** (start in test mode)
+4. **Get your Firebase configuration** from Project Settings → General → Your apps
+5. **Copy `.env.example` to `.env`**:
+   ```bash
+   cp .env.example .env
+   ```
+6. **Fill in your Firebase configuration** in the `.env` file:
+   ```env
+   VITE_FIREBASE_API_KEY=your_actual_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   VITE_FIREBASE_APP_ID=your_app_id
+   ```
+
+> **⚠️ Important**: Never commit the `.env` file to version control. It contains sensitive information and is already included in `.gitignore`.
 
 ## 🎯 Starting the Project
 
@@ -142,9 +158,16 @@ firebase deploy
 
 ### Common issues:
 
-1. **Firebase connection error**: Check internet connection
+1. **Firebase connection error**: 
+   - Check internet connection
+   - Verify your `.env` file is properly configured
+   - Ensure Firebase project is set up correctly
 2. **Port already in use**: Vite will automatically use a different port
 3. **Build errors**: Run `npm install` to reinstall dependencies
+4. **Environment variables not loading**:
+   - Make sure your `.env` file is in the project root
+   - Verify all variables start with `VITE_`
+   - Restart the development server after changing `.env`
 
 ### Debug:
 
