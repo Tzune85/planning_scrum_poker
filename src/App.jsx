@@ -12,7 +12,7 @@ import {
     serverTimestamp,
     getDocs // Added getDocs
 } from 'firebase/firestore';
-import { Clipboard, CheckCircle, Users, LogIn, LogOut, PlusCircle, Eye, EyeOff, RotateCcw, Edit3, Send } from 'lucide-react';
+import { Clipboard, CheckCircle, Users, LogIn, LogOut, PlusCircle, Eye, EyeOff, RotateCcw, Edit3, Send, History, ChevronRight, ChevronLeft } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // TODO: Add SDKs for Firebase products that you want to use
@@ -75,6 +75,7 @@ function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [copiedLink, setCopiedLink] = useState(false);
+    const [taskHistory, setTaskHistory] = useState([]);
 
     // --- Authentication Effect ---
     useEffect(() => {
@@ -322,6 +323,31 @@ function App() {
     const handleNewRound = async () => {
         if (!currentSessionId || !sessionData || !db) return;
         setIsLoading(true);
+        
+        // Save current task to history before starting new round
+        if (sessionData.votesRevealed) {
+            const participantArray = Object.entries(participants)
+                .map(([id, data]) => ({ id, ...data }))
+                .filter(p => p.roundId === sessionData.currentRoundId);
+            
+            const numericVotes = participantArray
+                .filter(p => p.vote !== null && typeof p.vote === 'number')
+                .map(p => p.vote);
+            
+            const finalVote = numericVotes.length > 0 
+                ? numericVotes.reduce((sum, v) => sum + v, 0) / numericVotes.length 
+                : null;
+            
+            const historyEntry = {
+                taskName: sessionData.taskName,
+                finalVote: finalVote ? Math.round(finalVote * 100) / 100 : 'No consensus',
+                timestamp: new Date().toISOString(),
+                participantCount: participantArray.length
+            };
+            
+            setTaskHistory(prev => [...prev, historyEntry]);
+        }
+        
         const newRoundId = crypto.randomUUID();
         try {
             const sessionDocRef = getSessionDocRef(currentSessionId);
@@ -345,6 +371,26 @@ function App() {
             setError("Unable to start new round.");
         }
         setIsLoading(false);
+    };
+
+    const handleVoteAgain = async () => {
+        if (!currentSessionId || !sessionData) return;
+        try {
+            const sessionDocRef = getSessionDocRef(currentSessionId);
+            await updateDoc(sessionDocRef, { votesRevealed: false });
+            
+            const participantsColRef = getParticipantsCollectionRef(currentSessionId);
+            const participantQuerySnapshot = await getDocs(participantsColRef); 
+            
+            const batchPromises = []; 
+            participantQuerySnapshot.forEach(doc => {
+                batchPromises.push(updateDoc(doc.ref, { vote: null, hasVoted: false }));
+            });
+            await Promise.all(batchPromises);
+        } catch (error) {
+            console.error("Error starting vote again:", error);
+            setError("Unable to start voting again.");
+        }
     };
 
     const handleUpdateTaskName = async (newTaskName) => {
@@ -481,7 +527,9 @@ function App() {
             onVote={handleVote}
             onRevealVotes={handleRevealVotes}
             onNewRound={handleNewRound}
+            onVoteAgain={handleVoteAgain}
             onUpdateTaskName={handleUpdateTaskName}
+            taskHistory={taskHistory}
             // sessionLink removed - using onCopyLink callback instead
             copiedLink={copiedLink}
             onCopyLink={copySessionLink}
@@ -580,15 +628,32 @@ function Lobby({ onCreateSession, nickname, userId, onLogout }) {
 
 function PokerSession({
     sessionData, participants, userId, nickname, amICreator,
-    onVote, onRevealVotes, onNewRound, onUpdateTaskName,
-    copiedLink, onCopyLink, onLogout, appError, setAppError
+    onVote, onRevealVotes, onNewRound, onVoteAgain, onUpdateTaskName,
+    taskHistory, copiedLink, onCopyLink, onLogout, appError, setAppError
 }) {
     const [editingTask, setEditingTask] = useState(false);
     const [currentTaskName, setCurrentTaskName] = useState(sessionData.taskName);
+    const [pendingVote, setPendingVote] = useState(null);
+    const [showHistory, setShowHistory] = useState(false);
 
     useEffect(() => {
         setCurrentTaskName(sessionData.taskName); 
     }, [sessionData.taskName]);
+
+    // Define participant data and voting status first
+    const participantArray = Object.entries(participants)
+        .map(([id, data]) => ({ id, ...data }))
+        .sort((a, b) => (a.joinedAt?.seconds || 0) - (b.joinedAt?.seconds || 0)); 
+
+    const localUserParticipantData = participants[userId];
+    const userHasVotedThisRound = localUserParticipantData?.hasVoted && localUserParticipantData?.roundId === sessionData.currentRoundId;
+
+    useEffect(() => {
+        // Reset pending vote when votes are revealed or round changes
+        if (sessionData.votesRevealed || userHasVotedThisRound) {
+            setPendingVote(null);
+        }
+    }, [sessionData.votesRevealed, sessionData.currentRoundId, userHasVotedThisRound]);
 
     const handleTaskNameSubmit = (e) => {
         e.preventDefault();
@@ -601,12 +666,18 @@ function PokerSession({
         setEditingTask(false);
     };
 
-    const participantArray = Object.entries(participants)
-        .map(([id, data]) => ({ id, ...data }))
-        .sort((a, b) => (a.joinedAt?.seconds || 0) - (b.joinedAt?.seconds || 0)); 
+    const handleCardSelect = (value) => {
+        setPendingVote(value);
+    };
 
-    const localUserParticipantData = participants[userId];
-    const userHasVotedThisRound = localUserParticipantData?.hasVoted && localUserParticipantData?.roundId === sessionData.currentRoundId;
+    const handleConfirmVote = () => {
+        if (pendingVote !== null) {
+            onVote(pendingVote);
+            setPendingVote(null);
+        }
+    };
+
+
 
     const allParticipantsVoted = participantArray.length > 0 && participantArray.every(p => p.hasVoted && p.roundId === sessionData.currentRoundId);
 
@@ -634,6 +705,51 @@ function PokerSession({
 
     return (
         <div className="min-h-screen bg-slate-900 text-white flex flex-col p-4 md:p-6 relative pb-32 md:pb-40"> {/* Added padding-bottom for voting cards */}
+            {/* Task History Sidebar */}
+            <div className={`fixed top-0 right-0 h-full w-80 bg-slate-800 border-l border-slate-700 transform transition-transform duration-300 ease-in-out z-50 ${showHistory ? 'translate-x-0' : 'translate-x-full'}`}>
+                <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+                    <h3 className="text-lg font-semibold text-purple-400 flex items-center">
+                        <History size={20} className="mr-2" />
+                        Task History
+                    </h3>
+                    <button
+                        onClick={() => setShowHistory(false)}
+                        className="p-1 hover:bg-slate-700 rounded"
+                    >
+                        <ChevronRight size={20} />
+                    </button>
+                </div>
+                <div className="p-4 overflow-y-auto h-full pb-20">
+                    {taskHistory.length === 0 ? (
+                        <p className="text-slate-400 text-center mt-8">No completed tasks yet</p>
+                    ) : (
+                        <div className="space-y-3">
+                            {taskHistory.map((task, index) => (
+                                <div key={index} className="bg-slate-700 p-3 rounded-lg border border-slate-600">
+                                    <h4 className="font-semibold text-blue-300 mb-1 text-sm break-words">{task.taskName}</h4>
+                                    <div className="flex justify-between items-center text-xs text-slate-300">
+                                        <span className="font-bold text-yellow-400">
+                                            Final: {typeof task.finalVote === 'number' ? task.finalVote : task.finalVote}
+                                        </span>
+                                        <span>{task.participantCount} votes</span>
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-1">
+                                        {new Date(task.timestamp).toLocaleString()}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+            
+            {/* Overlay when sidebar is open */}
+            {showHistory && (
+                <div 
+                    className="fixed inset-0 bg-black bg-opacity-50 z-40"
+                    onClick={() => setShowHistory(false)}
+                />
+            )}
             <header className="mb-6 flex flex-col sm:flex-row justify-between items-center">
                 <div className="flex items-center space-x-3 mb-4 sm:mb-0">
                     <h1 className="text-3xl font-bold text-blue-400">Planning Poker</h1>
@@ -650,6 +766,18 @@ function PokerSession({
                      <span className="text-slate-400 text-sm">
                         Hi, <span className="font-semibold text-blue-300">{nickname}</span>!
                     </span>
+                    <button
+                        onClick={() => setShowHistory(!showHistory)}
+                        title="Toggle task history"
+                        className="p-2 bg-purple-600 hover:bg-purple-700 rounded-full text-white shadow-md transition-colors relative"
+                    >
+                        <History size={18} />
+                        {taskHistory.length > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                {taskHistory.length}
+                            </span>
+                        )}
+                    </button>
                     <button
                         onClick={onLogout}
                         title="Exit session"
@@ -742,33 +870,60 @@ function PokerSession({
                         <Eye size={22} className="mr-2"/> Reveal Votes
                     </button>
                 )}
-                {sessionData.votesRevealed && amICreator && (
-                    <button
-                        onClick={onNewRound}
-                        className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-all flex items-center justify-center"
-                    >
-                        <RotateCcw size={22} className="mr-2"/> New Round
-                    </button>
+                {sessionData.votesRevealed && (
+                    <div className="flex gap-3">
+                        <button
+                            onClick={onVoteAgain}
+                            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold rounded-lg shadow-md transition-all flex items-center justify-center"
+                        >
+                            <RotateCcw size={22} className="mr-2"/> Vote Again
+                        </button>
+                        {amICreator && (
+                            <button
+                                onClick={onNewRound}
+                                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-all flex items-center justify-center"
+                            >
+                                <RotateCcw size={22} className="mr-2"/> New Round
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
             
             {(!sessionData.votesRevealed && !userHasVotedThisRound && localUserParticipantData) && (
                 <div className="fixed bottom-0 left-0 right-0 bg-slate-800 bg-opacity-90 p-3 md:p-4 border-t-2 border-slate-700 shadow-2xl">
                     <p className="text-center text-slate-300 mb-2 md:mb-3 text-sm md:text-base">Choose your card for: <strong className="text-sky-300">{sessionData.taskName}</strong></p>
-                    <div className="flex justify-center items-center gap-1 md:gap-2 flex-wrap">
+                    <div className="flex justify-center items-center gap-1 md:gap-2 flex-wrap mb-3">
                         {CARD_VALUES.map(value => (
                             <button
                                 key={value}
-                                onClick={() => onVote(value)}
+                                onClick={() => handleCardSelect(value)}
                                 className={`w-12 h-16 md:w-16 md:h-24 rounded-md md:rounded-lg text-lg md:text-2xl font-bold shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center justify-center
                                             ${getCardColor(value)}
-                                            ${(localUserParticipantData?.vote === value && userHasVotedThisRound) ? 'ring-4 ring-offset-2 ring-offset-slate-800 ring-yellow-400 scale-105' : ''}`}
+                                            ${pendingVote === value ? 'ring-4 ring-offset-2 ring-offset-slate-800 ring-yellow-400 scale-105' : ''}
+                                            ${(localUserParticipantData?.vote === value && userHasVotedThisRound) ? 'ring-4 ring-offset-2 ring-offset-slate-800 ring-green-400 scale-105' : ''}`}
                                 disabled={userHasVotedThisRound}
                             >
                                 {value}
                             </button>
                         ))}
                     </div>
+                    {pendingVote !== null && (
+                        <div className="flex justify-center gap-2">
+                            <button
+                                onClick={handleConfirmVote}
+                                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-md transition-all flex items-center"
+                            >
+                                <CheckCircle size={18} className="mr-2"/> Confirm Vote ({pendingVote})
+                            </button>
+                            <button
+                                onClick={() => setPendingVote(null)}
+                                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg shadow-md transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
             {(userHasVotedThisRound && !sessionData.votesRevealed && localUserParticipantData) && (
