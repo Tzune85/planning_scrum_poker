@@ -697,8 +697,10 @@ function PokerSession({
     }
     
     const getCardColor = (value) => {
-        if (typeof value === 'string') return 'bg-yellow-500 hover:bg-yellow-600'; 
-        if (value <= 4) return 'bg-green-500 hover:bg-green-600';
+        if (value === '☕') return 'bg-white hover:bg-gray-100';
+        if (value === '❓') return 'bg-yellow-500 hover:bg-yellow-600';
+        if (value === 2) return 'bg-green-500 hover:bg-green-600';
+        if (value === 4) return 'bg-orange-500 hover:bg-orange-600';
         if (value <= 8) return 'bg-blue-500 hover:bg-blue-600';
         return 'bg-purple-500 hover:bg-purple-600';
     };
@@ -939,8 +941,8 @@ function ParticipantChip({ participant, votesRevealed, currentRoundId }) {
     const hasVotedThisRound = participant.hasVoted && participant.roundId === currentRoundId;
     const voteToShow = (votesRevealed && hasVotedThisRound) ? participant.vote : (hasVotedThisRound ? '✔️' : '...');
     const cardColor = votesRevealed && hasVotedThisRound && typeof participant.vote === 'number' 
-        ? (participant.vote <= 4 ? 'bg-green-700' : participant.vote <= 8 ? 'bg-blue-700' : 'bg-purple-700')
-        : (votesRevealed && hasVotedThisRound && typeof participant.vote === 'string' ? 'bg-yellow-700' : 'bg-slate-600');
+        ? (participant.vote === 2 ? 'bg-green-700' : participant.vote === 4 ? 'bg-orange-700' : participant.vote <= 8 ? 'bg-blue-700' : 'bg-purple-700')
+        : (votesRevealed && hasVotedThisRound && participant.vote === '☕' ? 'bg-white text-black' : votesRevealed && hasVotedThisRound && participant.vote === '❓' ? 'bg-yellow-700' : 'bg-slate-600');
 
     return (
         <div className={`p-2 md:p-3 rounded-lg shadow-md text-center transition-all duration-300 ${cardColor} ${hasVotedThisRound && !votesRevealed ? 'border-2 border-green-400' : ''}`}>
